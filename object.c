@@ -232,7 +232,7 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     if (!space) { free(buf); return -1; }
     size_t data_len = (size_t)atol(space + 1);
 
-    // Step 7: Verify the declared size matches actual data
+
     uint8_t *data_start = null_ptr + 1;
     size_t actual_data_len = file_size - (data_start - buf);
     if (actual_data_len != data_len) { free(buf); return -1; }
