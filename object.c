@@ -237,7 +237,7 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     size_t actual_data_len = file_size - (data_start - buf);
     if (actual_data_len != data_len) { free(buf); return -1; }
 
-    // Step 8: Allocate and return data
+
     void *out = malloc(data_len);
     if (!out) { free(buf); return -1; }
     memcpy(out, data_start, data_len);
