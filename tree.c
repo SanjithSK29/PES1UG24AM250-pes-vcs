@@ -7,7 +7,7 @@
 //   "<mode-as-ascii-octal> <name>\0<32-byte-binary-hash>"
 //
 // Example single entry (conceptual):
-//   "100644 hello.txt\0" followed by 32 raw bytes of SHA-256
+
 
 #include "tree.h"
 #include <stdio.h>
@@ -15,6 +15,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
 // ─── Mode Constants ─────────────────────────────────────────────────────────
 
@@ -129,9 +130,109 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //   - object_write    : save that binary buffer to the store as OBJ_TREE
 //
 // Returns 0 on success, -1 on error.
+#include "index.h"
+
+static int write_tree_level(IndexEntry **entries, int count, int depth, ObjectID *id_out) {
+    Tree tree;
+    tree.count = 0;
+
+    int i = 0;
+    while (i < count) {
+        const char *path = entries[i]->path;
+
+        // Walk past `depth` path components
+        const char *p = path;
+        for (int d = 0; d < depth; d++) {
+            p = strchr(p, '/');
+            if (!p) return -1;
+            p++;
+        }
+
+        const char *slash = strchr(p, '/');
+
+        if (!slash) {
+            // Leaf: bare filename at this level
+            TreeEntry *e = &tree.entries[tree.count];
+            e->mode = entries[i]->mode;
+            e->hash = entries[i]->hash;
+            strncpy(e->name, p, sizeof(e->name) - 1);
+            e->name[sizeof(e->name) - 1] = '\0';
+            tree.count++;
+            i++;
+        } else {
+            // Directory: collect all entries sharing this prefix
+            size_t dir_len = slash - p;
+            char dir_name[256];
+            if (dir_len >= sizeof(dir_name)) return -1;
+            memcpy(dir_name, p, dir_len);
+            dir_name[dir_len] = '\0';
+
+            int j = i;
+            while (j < count) {
+                const char *pp = entries[j]->path;
+                for (int d = 0; d < depth; d++) {
+                    pp = strchr(pp, '/');
+                    if (!pp) break;
+                    pp++;
+                }
+                if (!pp || strncmp(pp, dir_name, dir_len) != 0 || pp[dir_len] != '/')
+                    break;
+                j++;
+            }
+
+            // Recurse into entries[i..j)
+            ObjectID subtree_id;
+            if (write_tree_level(entries + i, j - i, depth + 1, &subtree_id) != 0)
+                return -1;
+
+            TreeEntry *e = &tree.entries[tree.count];
+            e->mode = MODE_DIR;
+            e->hash = subtree_id;
+            strncpy(e->name, dir_name, sizeof(e->name) - 1);
+            e->name[sizeof(e->name) - 1] = '\0';
+            tree.count++;
+            i = j;
+        }
+
+        if (tree.count >= MAX_TREE_ENTRIES) return -1;
+    }
+
+    void *data;
+    size_t data_len;
+    if (tree_serialize(&tree, &data, &data_len) != 0) return -1;
+    int ret = object_write(OBJ_TREE, data, data_len, id_out);
+    free(data);
+    return ret;
+}
+
 int tree_from_index(ObjectID *id_out) {
-    // TODO: Implement recursive tree building
-    // (See Lab Appendix for logical steps)
-    (void)id_out;
-    return -1;
+    Index index;
+    if (index_load(&index) != 0) return -1;
+
+    // Handle empty index
+    if (index.count == 0) {
+        Tree empty; empty.count = 0;
+        void *data; size_t data_len;
+        if (tree_serialize(&empty, &data, &data_len) != 0) return -1;
+        int ret = object_write(OBJ_TREE, data, data_len, id_out);
+        free(data);
+        return ret;
+    }
+
+    // Build sorted pointer array
+    if (index.count > MAX_TREE_ENTRIES) return -1;
+    IndexEntry *ptrs[MAX_TREE_ENTRIES];
+    for (int i = 0; i < index.count; i++) ptrs[i] = &index.entries[i];
+
+    // Sort by path (index_save keeps it sorted, but be defensive)
+    for (int i = 1; i < index.count; i++) {
+        IndexEntry *key = ptrs[i];
+        int j = i - 1;
+        while (j >= 0 && strcmp(ptrs[j]->path, key->path) > 0) {
+            ptrs[j + 1] = ptrs[j]; j--;
+        }
+        ptrs[j + 1] = key;
+    }
+
+    return write_tree_level(ptrs, index.count, 0, id_out);
 }
