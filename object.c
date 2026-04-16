@@ -227,7 +227,7 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     else if (strncmp((char *)buf, "commit ", 7) == 0) type = OBJ_COMMIT;
     else { free(buf); return -1; }
 
-    // Step 6: Extract size from header and parse
+
     char *space = memchr(buf, ' ', null_ptr - buf);
     if (!space) { free(buf); return -1; }
     size_t data_len = (size_t)atol(space + 1);
