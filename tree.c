@@ -35,7 +35,7 @@ uint32_t get_file_mode(const char *path) {
     return MODE_FILE;
 }
 
-// Parse binary tree data into a Tree struct safely.
+
 // Returns 0 on success, -1 on parse error.
 int tree_parse(const void *data, size_t len, Tree *tree_out) {
     tree_out->count = 0;
