@@ -220,7 +220,7 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     uint8_t *null_ptr = memchr(buf, '\0', file_size);
     if (!null_ptr) { free(buf); return -1; }
 
-    // Step 5: Parse type string
+
     ObjectType type;
     if      (strncmp((char *)buf, "blob ",   5) == 0) type = OBJ_BLOB;
     else if (strncmp((char *)buf, "tree ",   5) == 0) type = OBJ_TREE;
